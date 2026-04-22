@@ -5,6 +5,7 @@ uefi-*.img-dtb
 uefi-*.img.gz
 uefi-*.img.gz-dtb
 workspace
+analysis/
 *.dll
 ramdisk
 .cache

@@ -15,3 +15,6 @@
 [submodule "tools/Installer"]
 	path = tools/Installer
 	url = https://github.com/MollySophia/Flashable_UEFI_Installer
+[submodule "UEFIFirmwareBackup"]
+	path = UEFIFirmwareBackup
+	url = https://github.com/xingguangcuican6666/UEFIFirmwareBackup.git

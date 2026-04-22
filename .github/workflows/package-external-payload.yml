@@ -37,6 +37,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Install required packages
         run: |
@@ -54,7 +56,12 @@ jobs:
             echo "payload=$(realpath workflow-input/payload.bin)" >> "${GITHUB_OUTPUT}"
           else
             PAYLOAD_PATH="${{ inputs.payload_path }}"
-            test -f "${PAYLOAD_PATH}"
+            if [[ ! -f "${PAYLOAD_PATH}" ]]; then
+              echo "Payload path not found: ${PAYLOAD_PATH}" >&2
+              echo "If this file lives in a submodule, make sure the submodule is declared in .gitmodules." >&2
+              echo "Alternatively, provide payload_url when dispatching the workflow." >&2
+              exit 1
+            fi
             echo "payload=$(realpath "${PAYLOAD_PATH}")" >> "${GITHUB_OUTPUT}"
           fi
 
