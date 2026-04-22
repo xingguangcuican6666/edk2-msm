@@ -43,6 +43,10 @@ _StackSize:
 	/* Image Size */
 	.quad UEFI_SIZE
 
+_EntryOffset:
+	/* Optional payload entry offset from UEFI_BASE */
+	.quad UEFI_ENTRY_OFFSET
+
 _Start:
 	mov	x4, x1
 	ldr	x5, _StackBase
@@ -58,6 +62,8 @@ _CopyLoop:
 	ldr	x5, _StackBase
 
 _Entry:
+	ldr	x4, _EntryOffset
+	add	x5, x5, x4
 	br	x5
 
 _Dead:

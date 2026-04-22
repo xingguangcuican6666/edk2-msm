@@ -22,6 +22,9 @@ _StackBase:
 _StackSize:
 	.quad UEFI_SIZE
 
+_EntryOffset:
+	.quad UEFI_ENTRY_OFFSET
+
 _KernelSize:
 	/* Size of kernel for calculating where the FD is */
 	.quad 0xDEADBEEF
@@ -64,6 +67,8 @@ _CopyUEFI:
 
 _Entry:
 	ldr		x5, _StackBase
+	ldr		x4, _EntryOffset
+	add		x5, x5, x4
 	/* Jump to UEFI */
 	br		x5
 

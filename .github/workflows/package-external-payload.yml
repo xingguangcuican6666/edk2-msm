@@ -1,0 +1,79 @@
+name: Package External Payload
+
+on:
+  workflow_dispatch:
+    inputs:
+      device:
+        description: "Target device config name"
+        required: true
+        default: "zorn"
+        type: string
+      payload_path:
+        description: "Path to payload in the repository"
+        required: false
+        default: "UEFIFirmwareBackup/qcom-lanai/uefi_debug.elf"
+        type: string
+      payload_url:
+        description: "Optional URL to download the payload from. Overrides payload_path when set."
+        required: false
+        default: ""
+        type: string
+      output_name:
+        description: "Output boot image name"
+        required: false
+        default: "boot-zorn-external.img"
+        type: string
+      append_dtb:
+        description: "Append device compat DTB to the generated kernel blob"
+        required: true
+        default: true
+        type: boolean
+
+jobs:
+  package:
+    name: Package external payload for ${{ inputs.device }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install required packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential gcc-aarch64-linux-gnu python3 binutils
+
+      - name: Resolve payload source
+        id: payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${{ inputs.payload_url }}" ]]; then
+            mkdir -p workflow-input
+            curl -L --fail --output workflow-input/payload.bin "${{ inputs.payload_url }}"
+            echo "payload=$(realpath workflow-input/payload.bin)" >> "${GITHUB_OUTPUT}"
+          else
+            PAYLOAD_PATH="${{ inputs.payload_path }}"
+            test -f "${PAYLOAD_PATH}"
+            echo "payload=$(realpath "${PAYLOAD_PATH}")" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Package boot image
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXTRA_ARGS=()
+          if [[ "${{ inputs.append_dtb }}" != "true" ]]; then
+            EXTRA_ARGS+=(--no-dtb)
+          fi
+          bash ./tools/package_external_payload_boot.sh \
+            --device "${{ inputs.device }}" \
+            --payload "${{ steps.payload.outputs.payload }}" \
+            --output "${{ inputs.output_name }}" \
+            "${EXTRA_ARGS[@]}"
+
+      - name: Upload packaged boot image
+        uses: actions/upload-artifact@v4
+        with:
+          name: external-payload-${{ inputs.device }}
+          path: ${{ inputs.output_name }}
