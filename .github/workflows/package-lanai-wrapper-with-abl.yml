@@ -1,0 +1,177 @@
+name: Package Lanai Wrapper With ABL
+
+on:
+  workflow_dispatch:
+    inputs:
+      device:
+        description: "Target device config name"
+        required: true
+        default: "zorn"
+        type: string
+      wrapper_bootimg_path:
+        description: "Reference working boot image used only as outer Android wrapper"
+        required: false
+        default: "nubia-nx789j.img"
+        type: string
+      wrapper_bootimg_url:
+        description: "Optional URL to download the outer wrapper boot image from"
+        required: false
+        default: ""
+        type: string
+      lanai_wrapper_path:
+        description: "Path to qcom-lanai uefi_debug.elf in the repository"
+        required: false
+        default: "UEFIFirmwareBackup/qcom-lanai/uefi_debug.elf"
+        type: string
+      lanai_wrapper_url:
+        description: "Optional URL to download qcom-lanai uefi wrapper from"
+        required: false
+        default: ""
+        type: string
+      abl_path:
+        description: "Path to ABL outer ELF in the repository"
+        required: false
+        default: "imgs/abl.elf"
+        type: string
+      abl_url:
+        description: "Optional URL to download ABL from"
+        required: false
+        default: ""
+        type: string
+      patch_aliases:
+        description: "Patch flashing unlock/lock aliases before embedding"
+        required: true
+        default: true
+        type: boolean
+      include_critical_aliases:
+        description: "Also patch flashing unlock_critical/lock_critical aliases"
+        required: true
+        default: true
+        type: boolean
+      output_name:
+        description: "Output boot image name"
+        required: false
+        default: "boot-zorn-lanai-abl-wrapper.img"
+        type: string
+
+jobs:
+  package:
+    name: Package Lanai wrapper boot for ${{ inputs.device }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install required packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3
+
+      - name: Resolve outer wrapper boot image
+        id: outer
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${{ inputs.wrapper_bootimg_url }}" ]]; then
+            mkdir -p workflow-input
+            curl -L --fail --output workflow-input/wrapper-boot.img "${{ inputs.wrapper_bootimg_url }}"
+            echo "wrapper=$(realpath workflow-input/wrapper-boot.img)" >> "${GITHUB_OUTPUT}"
+          else
+            WRAPPER_PATH="${{ inputs.wrapper_bootimg_path }}"
+            test -f "${WRAPPER_PATH}"
+            echo "wrapper=$(realpath "${WRAPPER_PATH}")" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Resolve qcom-lanai wrapper ELF
+        id: lanai
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${{ inputs.lanai_wrapper_url }}" ]]; then
+            mkdir -p workflow-input
+            curl -L --fail --output workflow-input/lanai-wrapper.elf "${{ inputs.lanai_wrapper_url }}"
+            echo "wrapper=$(realpath workflow-input/lanai-wrapper.elf)" >> "${GITHUB_OUTPUT}"
+          else
+            WRAPPER_PATH="${{ inputs.lanai_wrapper_path }}"
+            test -f "${WRAPPER_PATH}"
+            echo "wrapper=$(realpath "${WRAPPER_PATH}")" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Resolve ABL
+        id: abl
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${{ inputs.abl_url }}" ]]; then
+            mkdir -p workflow-input
+            curl -L --fail --output workflow-input/abl.elf "${{ inputs.abl_url }}"
+            echo "abl=$(realpath workflow-input/abl.elf)" >> "${GITHUB_OUTPUT}"
+          else
+            ABL_PATH="${{ inputs.abl_path }}"
+            test -f "${ABL_PATH}"
+            echo "abl=$(realpath "${ABL_PATH}")" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Patch ABL aliases
+        id: patched_abl
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ inputs.patch_aliases }}" == "true" ]]; then
+            EXTRA_ARGS=()
+            if [[ "${{ inputs.include_critical_aliases }}" != "true" ]]; then
+              EXTRA_ARGS+=(--no-critical-aliases)
+            fi
+            python3 ./tools/patch_abl_fastboot_aliases.py \
+              --input "${{ steps.abl.outputs.abl }}" \
+              --output patched-abl.elf \
+              "${EXTRA_ARGS[@]}"
+            echo "abl=$(realpath patched-abl.elf)" >> "${GITHUB_OUTPUT}"
+          else
+            echo "abl=${{ steps.abl.outputs.abl }}" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Patch qcom-lanai wrapper with ABL
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 ./tools/patch_qcom_wrapper_with_abl.py \
+            --wrapper "${{ steps.lanai.outputs.wrapper }}" \
+            --abl "${{ steps.patched_abl.outputs.abl }}" \
+            --output patched-lanai-wrapper.elf
+
+      - name: Build wrapper kernel image
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 ./tools/build_uefi_wrapper_kernel.py \
+            --wrapper-bootimg "${{ steps.outer.outputs.wrapper }}" \
+            --uefi-payload "${PWD}/patched-lanai-wrapper.elf" \
+            --uefi-payload-format elf-load-segment \
+            --output-kernel wrapper-kernel.bin
+
+      - name: Package boot image
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash ./tools/package_external_payload_boot.sh \
+            --device "${{ inputs.device }}" \
+            --mode kernel-image \
+            --payload wrapper-kernel.bin \
+            --output "${{ inputs.output_name }}" \
+            --no-dtb
+
+      - name: Upload boot image
+        uses: actions/upload-artifact@v4
+        with:
+          name: lanai-wrapper-abl-boot-${{ inputs.device }}
+          path: ${{ inputs.output_name }}
+
+      - name: Upload patched lanai wrapper
+        uses: actions/upload-artifact@v4
+        with:
+          name: patched-lanai-wrapper-${{ inputs.device }}
+          path: patched-lanai-wrapper.elf

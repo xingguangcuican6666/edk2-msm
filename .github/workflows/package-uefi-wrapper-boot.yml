@@ -1,0 +1,107 @@
+name: Package UEFI Wrapper Boot
+
+on:
+  workflow_dispatch:
+    inputs:
+      device:
+        description: "Target device config name"
+        required: true
+        default: "zorn"
+        type: string
+      wrapper_bootimg_path:
+        description: "Reference working boot image used only as outer kernel wrapper"
+        required: false
+        default: "nubia-nx789j.img"
+        type: string
+      wrapper_bootimg_url:
+        description: "Optional URL to download the wrapper boot image from. Overrides wrapper_bootimg_path when set."
+        required: false
+        default: ""
+        type: string
+      uefi_payload_path:
+        description: "UEFI ELF/raw payload to inject into the wrapper"
+        required: false
+        default: "UEFIFirmwareBackup/qcom-lanai/uefi_debug.elf"
+        type: string
+      uefi_payload_url:
+        description: "Optional URL to download the UEFI payload from. Overrides uefi_payload_path when set."
+        required: false
+        default: ""
+        type: string
+      output_name:
+        description: "Output boot image name"
+        required: false
+        default: "boot-zorn-uefi-wrapper.img"
+        type: string
+
+jobs:
+  package:
+    name: Package UEFI wrapper boot for ${{ inputs.device }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install required packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3
+
+      - name: Resolve wrapper boot image
+        id: wrapper
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${{ inputs.wrapper_bootimg_url }}" ]]; then
+            mkdir -p workflow-input
+            curl -L --fail --output workflow-input/wrapper-boot.img "${{ inputs.wrapper_bootimg_url }}"
+            echo "wrapper=$(realpath workflow-input/wrapper-boot.img)" >> "${GITHUB_OUTPUT}"
+          else
+            WRAPPER_PATH="${{ inputs.wrapper_bootimg_path }}"
+            test -f "${WRAPPER_PATH}"
+            echo "wrapper=$(realpath "${WRAPPER_PATH}")" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Resolve UEFI payload
+        id: payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${{ inputs.uefi_payload_url }}" ]]; then
+            mkdir -p workflow-input
+            curl -L --fail --output workflow-input/uefi-payload.bin "${{ inputs.uefi_payload_url }}"
+            echo "payload=$(realpath workflow-input/uefi-payload.bin)" >> "${GITHUB_OUTPUT}"
+          else
+            PAYLOAD_PATH="${{ inputs.uefi_payload_path }}"
+            test -f "${PAYLOAD_PATH}"
+            echo "payload=$(realpath "${PAYLOAD_PATH}")" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Build patched wrapper kernel image
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 ./tools/build_uefi_wrapper_kernel.py \
+            --wrapper-bootimg "${{ steps.wrapper.outputs.wrapper }}" \
+            --uefi-payload "${{ steps.payload.outputs.payload }}" \
+            --output-kernel wrapper-kernel.bin
+
+      - name: Package boot image
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash ./tools/package_external_payload_boot.sh \
+            --device "${{ inputs.device }}" \
+            --mode kernel-image \
+            --payload wrapper-kernel.bin \
+            --output "${{ inputs.output_name }}" \
+            --no-dtb
+
+      - name: Upload packaged boot image
+        uses: actions/upload-artifact@v4
+        with:
+          name: uefi-wrapper-boot-${{ inputs.device }}
+          path: ${{ inputs.output_name }}
