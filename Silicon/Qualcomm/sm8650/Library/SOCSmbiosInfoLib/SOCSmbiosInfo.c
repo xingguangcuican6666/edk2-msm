@@ -189,13 +189,15 @@ SMBIOS_TABLE_TYPE17 mMemDevInfoType17 = {
     },
     4800,   // Speed;
     2,      // Manufacturer String
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
+    0,      // SerialNumber String
+    0,      // AssetTag String
+    0,      // PartNumber String
+    0,      // Attributes;
+    0,      // ExtendedSize;
+    0,      // ConfiguredMemoryClockSpeed;
+    0,      // MinimumVoltage;
+    0,      // MaximumVoltage;
+    0,      // ConfiguredVoltage;
     MemoryTechnologyDram,
     {{
         // MemoryOperatingModeCapability
