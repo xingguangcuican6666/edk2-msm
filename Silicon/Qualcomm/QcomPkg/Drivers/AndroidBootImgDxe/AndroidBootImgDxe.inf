@@ -1,0 +1,33 @@
+## @file
+#  Minimal stub that installs the AndroidBootImg protocol required by
+#  EmbeddedPkg/Application/AndroidBoot/AndroidBootApp.
+#
+#  Copyright (c) 2024, edk2-msm contributors.
+#  SPDX-License-Identifier: BSD-2-Clause-Patent
+##
+
+[Defines]
+  INF_VERSION                    = 0x00010019
+  BASE_NAME                      = AndroidBootImgDxe
+  FILE_GUID                      = a9fc1b55-b8c5-4e82-bb9e-3f2b9b7e43a1
+  MODULE_TYPE                    = DXE_DRIVER
+  VERSION_STRING                 = 1.0
+  ENTRY_POINT                    = AndroidBootImgDxeEntryPoint
+
+[Sources]
+  AndroidBootImgDxe.c
+
+[Packages]
+  EmbeddedPkg/EmbeddedPkg.dec
+  MdePkg/MdePkg.dec
+
+[LibraryClasses]
+  DebugLib
+  UefiBootServicesTableLib
+  UefiDriverEntryPoint
+
+[Protocols]
+  gAndroidBootImgProtocolGuid   ## PRODUCES
+
+[Depex]
+  TRUE

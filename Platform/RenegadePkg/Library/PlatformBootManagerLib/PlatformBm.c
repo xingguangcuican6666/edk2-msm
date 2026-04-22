@@ -672,6 +672,19 @@ VOID EFIAPI PlatformBootManagerAfterConsole(VOID)
   //
   EfiBootManagerRefreshAllBootOption();
 
+#ifdef ENABLE_ANDROID_BOOT
+  //
+  // Register stock ABL (EmbeddedPkg/Application/AndroidBoot/AndroidBootApp)
+  // built from tianocore/edk2 @ e7aac7fc137e247edad22f7ee53b9a1fba227397.
+  // Registered first so BDS tries it before the UEFI Shell.  AndroidBootApp
+  // reads PcdAndroidBootDevicePath to locate the Android boot partition and
+  // boots the kernel from it.  If the partition is not yet configured the app
+  // returns an error and BDS falls through to the next boot option.
+  //
+  PlatformRegisterFvBootOption(
+      &gAndroidBootAppFileGuid, L"Android Boot (EmbeddedPkg ABL)", LOAD_OPTION_ACTIVE);
+#endif
+
   //
   // Register UEFI Shell
   //
