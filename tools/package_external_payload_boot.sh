@@ -2,19 +2,24 @@
 set -euo pipefail
 
 usage() {
-	echo "Usage: $0 --device DEVICE --payload FILE [--output FILE] [--base HEX] [--size HEX] [--entry-offset HEX] [--no-dtb]"
+	echo "Usage: $0 --device DEVICE --payload FILE [--output FILE] [--mode MODE] [--base HEX] [--size HEX] [--entry-offset HEX] [--no-dtb]"
 	echo
-	echo "Package an external payload as an Android boot.img using BootShim."
+	echo "Package an external payload as an Android boot.img."
 	echo
-	echo "If FILE is an ELF executable with a single LOAD segment, the script will:"
+	echo "Modes:"
+	echo "  bootshim     wrap the payload with BootShim and emit boot.img"
+	echo "  kernel-image treat the payload as a prebuilt ARM64 kernel-style image and emit boot.img"
+	echo
+	echo "In bootshim mode, if FILE is an ELF executable with a single LOAD segment, the script will:"
 	echo "  1. extract the loadable segment,"
 	echo "  2. infer BootShim base/size from the ELF,"
 	echo "  3. use the ELF entry point as a BootShim entry offset."
 	echo
-	echo "For raw payloads, --base and --size are required."
+	echo "For raw payloads in bootshim mode, --base and --size are required."
 	echo
 	echo "Examples:"
 	echo "  $0 --device zorn --payload UEFIFirmwareBackup/qcom-lanai/uefi_debug.elf"
+	echo "  $0 --device zorn --payload wrapper/Image --mode kernel-image --no-dtb"
 	echo "  $0 --device zorn --payload payload.bin --base 0xce000000 --size 0x02000000 --entry-offset 0x0"
 }
 
@@ -45,6 +50,7 @@ cd "${ROOTDIR}"
 DEVICE=""
 PAYLOAD=""
 OUTPUT=""
+MODE="bootshim"
 BOOTSHIM_BASE=""
 BOOTSHIM_SIZE=""
 BOOTSHIM_ENTRY_OFFSET="0x0"
@@ -62,6 +68,10 @@ while [[ $# -gt 0 ]]; do
 			;;
 		-o|--output)
 			OUTPUT="${2}"
+			shift 2
+			;;
+		-m|--mode)
+			MODE="${2}"
 			shift 2
 			;;
 		--base)
@@ -127,8 +137,16 @@ FINAL_KERNEL="${TMPDIR}/kernel"
 EMPTY_RAMDISK="${TMPDIR}/ramdisk"
 : > "${EMPTY_RAMDISK}"
 
+case "${MODE}" in
+	bootshim|kernel-image)
+		;;
+	*)
+		error "Unsupported --mode: ${MODE}"
+		;;
+esac
+
 PAYLOAD_TYPE="$(file -b "${PAYLOAD}")"
-if [[ "${PAYLOAD_TYPE}" == ELF* ]]; then
+if [[ "${MODE}" == "bootshim" && "${PAYLOAD_TYPE}" == ELF* ]]; then
 	LOAD_COUNT="$(readelf -lW "${PAYLOAD}" | awk '$1 == "LOAD" {c++} END {print c + 0}')"
 	[[ "${LOAD_COUNT}" == "1" ]] || error "ELF payload must have exactly one LOAD segment, found ${LOAD_COUNT}"
 
@@ -160,31 +178,43 @@ if [[ "${PAYLOAD_TYPE}" == ELF* ]]; then
 	fi
 	BOOTSHIM_ENTRY_OFFSET="$(dec_to_hex "${ENTRY_OFFSET_DEC}")"
 else
-	cp "${PAYLOAD}" "${RAW_PAYLOAD}"
-	[[ -n "${BOOTSHIM_BASE}" ]] || error "Raw payload requires --base"
-	[[ -n "${BOOTSHIM_SIZE}" ]] || error "Raw payload requires --size"
+	if [[ "${MODE}" == "bootshim" ]]; then
+		cp "${PAYLOAD}" "${RAW_PAYLOAD}"
+		[[ -n "${BOOTSHIM_BASE}" ]] || error "Raw payload requires --base"
+		[[ -n "${BOOTSHIM_SIZE}" ]] || error "Raw payload requires --size"
 
-	RAW_SIZE_DEC="$(stat -c '%s' "${RAW_PAYLOAD}")"
-	BOOTSHIM_SIZE_DEC="$(hex_to_dec "${BOOTSHIM_SIZE}")"
-	(( RAW_SIZE_DEC <= BOOTSHIM_SIZE_DEC )) || error "Raw payload is larger than requested BootShim size"
-	BOOTSHIM_SIZE_DEC="$(align_up "${BOOTSHIM_SIZE_DEC}" 16)"
-	truncate -s "${BOOTSHIM_SIZE_DEC}" "${RAW_PAYLOAD}"
-	BOOTSHIM_SIZE="$(dec_to_hex "${BOOTSHIM_SIZE_DEC}")"
+		RAW_SIZE_DEC="$(stat -c '%s' "${RAW_PAYLOAD}")"
+		BOOTSHIM_SIZE_DEC="$(hex_to_dec "${BOOTSHIM_SIZE}")"
+		(( RAW_SIZE_DEC <= BOOTSHIM_SIZE_DEC )) || error "Raw payload is larger than requested BootShim size"
+		BOOTSHIM_SIZE_DEC="$(align_up "${BOOTSHIM_SIZE_DEC}" 16)"
+		truncate -s "${BOOTSHIM_SIZE_DEC}" "${RAW_PAYLOAD}"
+		BOOTSHIM_SIZE="$(dec_to_hex "${BOOTSHIM_SIZE_DEC}")"
+	else
+		cp "${PAYLOAD}" "${FINAL_KERNEL}"
+	fi
 fi
 
 echo "Payload      : ${PAYLOAD}"
-echo "BootShim base: ${BOOTSHIM_BASE}"
-echo "BootShim size: ${BOOTSHIM_SIZE}"
-echo "Entry offset : ${BOOTSHIM_ENTRY_OFFSET}"
+echo "Mode         : ${MODE}"
+if [[ "${MODE}" == "bootshim" ]]; then
+	echo "BootShim base: ${BOOTSHIM_BASE}"
+	echo "BootShim size: ${BOOTSHIM_SIZE}"
+	echo "Entry offset : ${BOOTSHIM_ENTRY_OFFSET}"
+fi
 echo "Output       : ${OUTPUT}"
+echo "Append DTB   : ${APPEND_DTB}"
 
-pushd "${ROOTDIR}/tools/BootShim" >/dev/null
-	rm -f BootShim.bin BootShim.elf
-	make UEFI_BASE="${BOOTSHIM_BASE}" UEFI_SIZE="${BOOTSHIM_SIZE}" UEFI_ENTRY_OFFSET="${BOOTSHIM_ENTRY_OFFSET}"
-popd >/dev/null
+if [[ "${MODE}" == "bootshim" ]]; then
+	pushd "${ROOTDIR}/tools/BootShim" >/dev/null
+		rm -f BootShim.bin BootShim.elf
+		make UEFI_BASE="${BOOTSHIM_BASE}" UEFI_SIZE="${BOOTSHIM_SIZE}" UEFI_ENTRY_OFFSET="${BOOTSHIM_ENTRY_OFFSET}"
+	popd >/dev/null
 
-cat "${ROOTDIR}/tools/BootShim/BootShim.bin" "${RAW_PAYLOAD}" > "${KERNEL_WITH_SHIM}"
-gzip -c < "${KERNEL_WITH_SHIM}" > "${KERNEL_GZ}"
+	cat "${ROOTDIR}/tools/BootShim/BootShim.bin" "${RAW_PAYLOAD}" > "${KERNEL_WITH_SHIM}"
+	gzip -c < "${KERNEL_WITH_SHIM}" > "${KERNEL_GZ}"
+else
+	gzip -c < "${FINAL_KERNEL}" > "${KERNEL_GZ}"
+fi
 
 DTB_PATH="${ROOTDIR}/Platform/${VENDOR_NAME}/${SOC_PLATFORM_L}/FdtBlob_compat/${PLATFORM_NAME}.dtb"
 if "${APPEND_DTB}" && [[ -f "${DTB_PATH}" ]]; then

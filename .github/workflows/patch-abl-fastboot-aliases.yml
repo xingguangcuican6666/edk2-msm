@@ -1,0 +1,73 @@
+name: Patch ABL Fastboot Aliases
+
+on:
+  workflow_dispatch:
+    inputs:
+      abl_path:
+        description: "Path to abl.elf in the repository"
+        required: false
+        default: "imgs/abl.elf"
+        type: string
+      abl_url:
+        description: "Optional URL to download abl.elf from. Overrides abl_path when set."
+        required: false
+        default: ""
+        type: string
+      output_name:
+        description: "Patched output file name"
+        required: false
+        default: "abl-fastboot-aliases.elf"
+        type: string
+      include_critical_aliases:
+        description: "Also add flashing unlock_critical/lock_critical aliases"
+        required: true
+        default: true
+        type: boolean
+
+jobs:
+  patch:
+    name: Patch ABL fastboot aliases
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Resolve ABL source
+        id: abl
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${{ inputs.abl_url }}" ]]; then
+            mkdir -p workflow-input
+            curl -L --fail --output workflow-input/abl.elf "${{ inputs.abl_url }}"
+            echo "abl=$(realpath workflow-input/abl.elf)" >> "${GITHUB_OUTPUT}"
+          else
+            ABL_PATH="${{ inputs.abl_path }}"
+            if [[ ! -f "${ABL_PATH}" ]]; then
+              echo "ABL path not found: ${ABL_PATH}" >&2
+              exit 1
+            fi
+            echo "abl=$(realpath "${ABL_PATH}")" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Patch ABL
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXTRA_ARGS=()
+          if [[ "${{ inputs.include_critical_aliases }}" != "true" ]]; then
+            EXTRA_ARGS+=(--no-critical-aliases)
+          fi
+          python3 ./tools/patch_abl_fastboot_aliases.py \
+            --input "${{ steps.abl.outputs.abl }}" \
+            --output "${{ inputs.output_name }}" \
+            "${EXTRA_ARGS[@]}"
+
+      - name: Upload patched ABL
+        uses: actions/upload-artifact@v4
+        with:
+          name: patched-abl-fastboot-aliases
+          path: ${{ inputs.output_name }}

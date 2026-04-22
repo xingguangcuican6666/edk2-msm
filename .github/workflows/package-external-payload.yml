@@ -8,6 +8,11 @@ on:
         required: true
         default: "zorn"
         type: string
+      mode:
+        description: "Packaging mode: bootshim or kernel-image"
+        required: true
+        default: "bootshim"
+        type: string
       payload_path:
         description: "Path to payload in the repository"
         required: false
@@ -26,7 +31,7 @@ on:
       append_dtb:
         description: "Append device compat DTB to the generated kernel blob"
         required: true
-        default: true
+        default: false
         type: boolean
 
 jobs:
@@ -75,6 +80,7 @@ jobs:
           fi
           bash ./tools/package_external_payload_boot.sh \
             --device "${{ inputs.device }}" \
+            --mode "${{ inputs.mode }}" \
             --payload "${{ steps.payload.outputs.payload }}" \
             --output "${{ inputs.output_name }}" \
             "${EXTRA_ARGS[@]}"
