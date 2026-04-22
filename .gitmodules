@@ -18,3 +18,6 @@
 [submodule "UEFIFirmwareBackup"]
 	path = UEFIFirmwareBackup
 	url = https://github.com/xingguangcuican6666/UEFIFirmwareBackup.git
+[submodule "edk2"]
+	path = edk2
+	url = https://git.codelinaro.org/clo/la/abl/tianocore/edk2/
