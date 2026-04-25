@@ -18,11 +18,11 @@
 
 [PcdsFixedAtBuild.common]
   # Redmi K80 (zorn): 6.67" AMOLED 1220x2712 @ 144Hz
-  gQcomTokenSpaceGuid.PcdMipiFrameBufferWidth|1220
-  gQcomTokenSpaceGuid.PcdMipiFrameBufferHeight|2712
+  gQcomTokenSpaceGuid.PcdMipiFrameBufferWidth|1080
+  gQcomTokenSpaceGuid.PcdMipiFrameBufferHeight|2400
 
   # Simple Init
-  gSimpleInitTokenSpaceGuid.PcdGuiDefaultDPI|446
+  gSimpleInitTokenSpaceGuid.PcdGuiDefaultDPI|450
 
   gRenegadePkgTokenSpaceGuid.PcdDeviceVendor|"Xiaomi"
   gRenegadePkgTokenSpaceGuid.PcdDeviceProduct|"Redmi K80"
