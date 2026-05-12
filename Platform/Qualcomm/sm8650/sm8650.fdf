@@ -191,6 +191,13 @@ READ_LOCK_STATUS   = TRUE
   INF GPLDrivers/Application/SwitchSlotsApp/SwitchSlotsApp.inf
 !endif
 
+  #
+  # AndroidBootImg protocol stub + stock ABL from EmbeddedPkg (tianocore/edk2 @ e7aac7fc)
+  # AndroidBootApp reads PcdAndroidBootDevicePath and boots the Android boot image.
+  #
+  INF Silicon/Qualcomm/QcomPkg/Drivers/AndroidBootImgDxe/AndroidBootImgDxe.inf
+  INF EmbeddedPkg/Application/AndroidBoot/AndroidBootApp.inf
+
 # Device specific fdf
 !include $(DEVICE_DXE_FV_COMPONENTS)
 

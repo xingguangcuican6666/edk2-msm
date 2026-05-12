@@ -62,5 +62,19 @@
   MsPlatformDevicesLib|Silicon/Qualcomm/sm8650/Library/MsPlatformDevicesLib/MsPlatformDevicesLib.inf
   SOCSmbiosInfoLib|Silicon/Qualcomm/sm8650/Library/SOCSmbiosInfoLib/SOCSmbiosInfoLib.inf
 
+  # Android Boot support (from EmbeddedPkg in Common/edk2 @ e7aac7fc)
+  AndroidBootImgLib|EmbeddedPkg/Library/AndroidBootImgLib/AndroidBootImgLib.inf
+
+[BuildOptions.common]
+  # Enable AndroidBootApp registration in PlatformBootManagerLib
+  GCC:*_*_AARCH64_CC_FLAGS = -DENABLE_ANDROID_BOOT
+
 [Components.common]
+  # AndroidBootImg protocol stub
+  Silicon/Qualcomm/QcomPkg/Drivers/AndroidBootImgDxe/AndroidBootImgDxe.inf
+
+  # Stock ABL from tianocore/edk2 @ e7aac7fc – compiled as a UEFI application
+  # and embedded in the firmware volume; automatically launched at boot.
+  EmbeddedPkg/Application/AndroidBoot/AndroidBootApp.inf
+
 
